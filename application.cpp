@@ -118,7 +118,7 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
    }
 
    if( options.count( "version" ) ) {
-      cout << my->_version << std::endl;
+      cout << std::hex << my->_version << std::endl;
       return false;
    }
 
