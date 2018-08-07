@@ -33,7 +33,7 @@ namespace appbase {
        * @return
        */
       template<typename InputIterator>
-      Ret operator()(InputIterator first, InputIterator last) {
+      result_type operator()(InputIterator first, InputIterator last) {
          std::string err;
          while (first != last) {
             try {
@@ -68,7 +68,7 @@ namespace appbase {
        * @return
        */
       template<typename InputIterator>
-      void operator()(InputIterator first, InputIterator last) {
+      result_type operator()(InputIterator first, InputIterator last) {
          std::string err;
 
          while (first != last) {
@@ -110,7 +110,7 @@ namespace appbase {
        * @return
        */
       template<typename InputIterator>
-      Ret operator()(InputIterator first, InputIterator) {
+      result_type operator()(InputIterator first, InputIterator) {
          return *first;
       }
    };
@@ -129,7 +129,7 @@ namespace appbase {
        * @return
        */
       template<typename InputIterator>
-      void operator()(InputIterator first, InputIterator) {
+      result_type operator()(InputIterator first, InputIterator) {
          *first;
       }
    };
@@ -152,7 +152,7 @@ namespace appbase {
              *
              * @throws exception depending on the DispatchPolicy
              */
-            Ret operator()(Args&&... args)
+            result_type operator()(Args&&... args)
             {
                return _signal(std::forward<Args>(args)...);
             }
@@ -174,7 +174,7 @@ namespace appbase {
              *
              * @throws exception depending on the DispatchPolicy
              */
-            void operator()(Args&&... args)
+            result_type operator()(Args&&... args)
             {
                _signal(std::forward<Args>(args)...);
             }
