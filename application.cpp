@@ -105,7 +105,7 @@ void application::set_program_options()
          ("data-dir,d", bpo::value<std::string>(), "Directory containing program runtime data")
          ("config-dir", bpo::value<std::string>(), "Directory containing configuration files such as config.ini")
          ("config,c", bpo::value<std::string>()->default_value( "config.ini" ), "Configuration file name relative to config-dir")
-         ("logconf,l", bpo::value<std::string>()->default_value( "logging.json" ), "Logging configuration file name/path for library users");
+         ("log-config,l", bpo::value<std::string>()->default_value( "logging.json" ), "Logging configuration file name/path for library users");
 
    my->_cfg_options.add(app_cfg_opts);
    my->_app_options.add(app_cfg_opts);
@@ -153,11 +153,11 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       my->_config_dir = config_dir;
    }
 
-   auto workaround = options["logconf"].as<std::string>();
-   bfs::path logconf = workaround;
-   if( logconf.is_relative() )
-      logconf = my->_config_dir / logconf;
-   my->_logging_conf = logconf;
+   auto workaround = options["log-config"].as<std::string>();
+   bfs::path log-config = workaround;
+   if( log-config.is_relative() )
+      log-config = my->_config_dir / log-config;
+   my->_logging_conf = log-config;
 
    workaround = options["config"].as<std::string>();
    bfs::path config_file_name = workaround;
