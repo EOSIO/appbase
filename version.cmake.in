@@ -8,7 +8,7 @@ execute_process(
    WORKING_DIRECTORY @CMAKE_SOURCE_DIR@
 )
 if(NOT ${res} STREQUAL "0")
-  message(FATAL_ERROR "git describe failed")
+  message(WARNING "git describe failed to set app_version")
 endif()
 #unsure if this next is possible but just a failsafe
 if("${VERSION_STRING}" STREQUAL "")
