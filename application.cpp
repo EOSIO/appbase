@@ -18,10 +18,11 @@ using std::cout;
 
 class application_impl {
    public:
-      application_impl():_app_options("Application Options"){
+      application_impl():_app_options("Application Options"), _app_cfg_opts("Application Config Options"){
       }
       options_description     _app_options;
       options_description     _cfg_options;
+      options_description     _app_cfg_opts;
 
       bfs::path               _data_dir{"data-dir"};
       bfs::path               _config_dir{"config-dir"};
@@ -92,9 +93,8 @@ void application::set_program_options()
          my->_app_options.add(plugin_cli_opts);
    }
 
-   options_description app_cfg_opts( "Application Config Options" );
    options_description app_cli_opts( "Application Command Line Options" );
-   app_cfg_opts.add_options()
+   my->_app_cfg_opts.add_options()
          ("plugin", bpo::value< vector<string> >()->composing(), "Plugin(s) to enable, may be specified multiple times");
 
    app_cli_opts.add_options()
@@ -106,8 +106,8 @@ void application::set_program_options()
          ("config,c", bpo::value<std::string>()->default_value( "config.ini" ), "Configuration file name relative to config-dir")
          ("logconf,l", bpo::value<std::string>()->default_value( "logging.json" ), "Logging configuration file name/path for library users");
 
-   my->_cfg_options.add(app_cfg_opts);
-   my->_app_options.add(app_cfg_opts);
+   my->_cfg_options.add(my->_app_cfg_opts);
+   my->_app_options.add(my->_app_cfg_opts);
    my->_app_options.add(app_cli_opts);
 }
 
@@ -172,20 +172,30 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
       write_default_config(config_file_name);
    }
 
+   auto for_each_plugin = [&](std::function<void(abstract_plugin&)> f) {
+      if(options.count("plugin") > 0) {
+         auto plugins = options.at("plugin").as<std::vector<std::string>>();
+         for(auto& arg : plugins) {
+            vector<string> names;
+            boost::split(names, arg, boost::is_any_of(" \t,"));
+            for(const std::string& name : names)
+               f(get_plugin(name));
+         }
+      }
+   };
+
+   bpo::store(bpo::parse_config_file<char>(config_file_name.make_preferred().string().c_str(),
+                                           my->_app_cfg_opts, true), options);
+
+   for_each_plugin([](auto& p){});
+
    bpo::store(bpo::parse_config_file<char>(config_file_name.make_preferred().string().c_str(),
                                            my->_cfg_options, false), options);
 
-   if(options.count("plugin") > 0)
-   {
-      auto plugins = options.at("plugin").as<std::vector<std::string>>();
-      for(auto& arg : plugins)
-      {
-         vector<string> names;
-         boost::split(names, arg, boost::is_any_of(" \t,"));
-         for(const std::string& name : names)
-            get_plugin(name).initialize(options);
-      }
-   }
+   for_each_plugin([&](auto& p){
+      p.initialize(options);
+   });
+
    try {
       for (auto plugin : autostart_plugins)
          if (plugin != nullptr && plugin->get_state() == abstract_plugin::registered)
