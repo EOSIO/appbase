@@ -168,6 +168,8 @@ namespace appbase {
           * @return io_serivice of application
           */
          boost::asio::io_service& get_io_service() { return *io_serv; }
+         std::shared_ptr<boost::asio::io_service> get_io_service_ptr() { return io_serv; }
+         
       protected:
          template<typename Impl>
          friend class plugin;
