@@ -249,6 +249,7 @@ void application::shutdown() {
 void application::quit() {
    my->_is_quiting = true;
    io_serv->stop();
+   boost::asio::post(*io_serv, [io_service = io_serv]() {} ); // keep io_serv alive until stopped
 }
 
 bool application::is_quiting() const {
