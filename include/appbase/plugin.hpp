@@ -39,6 +39,7 @@ namespace appbase {
          virtual const std::string& name()const  = 0;
          virtual void set_program_options( options_description& cli, options_description& cfg ) = 0;
          virtual void initialize(const variables_map& options) = 0;
+         virtual void handle_sighup() = 0;
          virtual void startup() = 0;
          virtual void shutdown() = 0;
    };

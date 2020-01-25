@@ -2,6 +2,7 @@
 #include <appbase/plugin.hpp>
 #include <appbase/channel.hpp>
 #include <appbase/method.hpp>
+#include <appbase/execution_priority_queue.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/core/demangle.hpp>
 #include <typeindex>
@@ -9,6 +10,8 @@
 namespace appbase {
    namespace bpo = boost::program_options;
    namespace bfs = boost::filesystem;
+
+   using config_comparison_f = std::function<bool(const boost::any& a, const boost::any& b)>;
 
    class application
    {
@@ -31,6 +34,17 @@ namespace appbase {
           * @return A string worthy of output with -v/--version, or "Unknown" if git not available
           */
          string version_string() const;
+         /** @brief User provided version string for version_string() which overrides git describe value.
+          */
+         void set_version_string(std::string v);
+         /** @brief Get full version string; same as version_string() unless set differently.
+          *
+          * @return A string worthy of output with -v/--version, or "Unknown" if git not available
+          */
+         string full_version_string() const;
+         /** @brief User provided full version string for full_version_string()
+          */
+         void set_full_version_string(std::string v);
          /** @brief Set default data directory
           *
           * @param data_dir Default data directory to use if not specified
@@ -58,6 +72,22 @@ namespace appbase {
           * @return Logging configuration location from command line
           */
          bfs::path get_logging_conf() const;
+         /** @brief Get full config.ini path
+          *
+          * @return Config directory & config file name, possibly from command line. Only
+          *         valid after initialize() has been called.
+          */
+         bfs::path full_config_file_path() const;
+         /** @brief Set function pointer invoked on receipt of SIGHUP
+          *
+          * The provided function will be invoked on receipt of SIGHUP followed
+          * by invoking handle_sighup() on all initialized plugins. Caller
+          * is responsible for preserving an object if necessary.
+          *
+          * @param callback Function pointer that will be invoked when the process
+          *                 receives the HUP (1) signal.
+          */
+          void set_sighup_callback(std::function<void()> callback);
          /**
           * @brief Looks for the --plugin commandline / config option and calls initialize on those plugins
           *
@@ -74,10 +104,28 @@ namespace appbase {
          void                  shutdown();
 
          /**
-          *  Wait until quit(), SIGINT or SIGTERM and then shutdown
+          *  Wait until quit(), SIGINT or SIGTERM and then shutdown.
+          *  Should only be executed from one thread.
           */
          void                 exec();
          void                 quit();
+
+         /**
+          * If in long running process this flag can be checked to see if processing should be stoppped.
+          * @return true if quit() has been called.
+          */
+         bool                 is_quiting()const;
+
+         /**
+          * Register a configuration type with appbase. most "plain" types are already registered in
+          * application.cpp. Failure to register a type will cause initialization to fail.
+          */
+         template <typename T> void register_config_type() {
+            register_config_type_comparison(typeid(T), [](const auto& a, const auto& b) {
+               return boost::any_cast<const T&>(a) == boost::any_cast<const T&>(b);
+            });
+         }
+         void register_config_type_comparison(std::type_index, config_comparison_f comp);
 
          static application&  instance();
 
@@ -145,12 +193,49 @@ namespace appbase {
             if(itr != channels.end()) {
                return *channel_type::get_channel(itr->second);
             } else {
-               channels.emplace(std::make_pair(key, channel_type::make_unique(io_serv)));
+               channels.emplace(std::make_pair(key, channel_type::make_unique()));
                return  *channel_type::get_channel(channels.at(key));
             }
          }
 
+         /**
+          * Do not run io_service in any other threads, as application assumes single-threaded execution in exec().
+          * @return io_serivice of application
+          */
          boost::asio::io_service& get_io_service() { return *io_serv; }
+
+         /**
+          * Post func to run on io_service with given priority.
+          *
+          * @param priority can be appbase::priority::* constants or any int, larger ints run first
+          * @param func function to run on io_service
+          * @return result of boost::asio::post
+          */
+         template <typename Func>
+         auto post( int priority, Func&& func ) {
+            return boost::asio::post(*io_serv, pri_queue.wrap(priority, std::forward<Func>(func)));
+         }
+
+         /**
+          * Provide access to execution priority queue so it can be used to wrap functions for
+          * prioritized execution.
+          *
+          * Example:
+          *   boost::asio::steady_timer timer( app().get_io_service() );
+          *   timer.async_wait( app().get_priority_queue().wrap(priority::low, [](){ do_something(); }) );
+          */
+         auto& get_priority_queue() {
+            return pri_queue;
+         }
+
+         const bpo::variables_map& get_options() const;
+
+         /**
+          * Set the current thread schedule priority to maximum.
+          * Works for pthreads.
+          */
+         void set_thread_priority_max();
+
       protected:
          template<typename Impl>
          friend class plugin;
@@ -171,14 +256,21 @@ namespace appbase {
          vector<abstract_plugin*>                  initialized_plugins; ///< stored in the order they were started running
          vector<abstract_plugin*>                  running_plugins; ///< stored in the order they were started running
 
+         std::function<void()>                     sighup_callback;
          map<std::type_index, erased_method_ptr>   methods;
          map<std::type_index, erased_channel_ptr>  channels;
 
          std::shared_ptr<boost::asio::io_service>  io_serv;
+         execution_priority_queue                  pri_queue;
 
+         void start_sighup_handler( std::shared_ptr<boost::asio::signal_set> sighup_set );
          void set_program_options();
          void write_default_config(const bfs::path& cfg_file);
          void print_default_config(std::ostream& os);
+
+         void wait_for_signal(std::shared_ptr<boost::asio::signal_set> ss);
+         void setup_signal_handling_on_ios(boost::asio::io_service& ios, bool startup);
+
          std::unique_ptr<class application_impl> my;
 
    };
@@ -207,7 +299,10 @@ namespace appbase {
                //ilog( "initializing plugin ${name}", ("name",name()) );
                app().plugin_initialized(*this);
             }
-            assert(_state == initialized); /// if initial state was not registered, final state cannot be initiaized
+            assert(_state == initialized); /// if initial state was not registered, final state cannot be initialized
+         }
+
+         virtual void handle_sighup() override {
          }
 
          virtual void startup() override {
@@ -235,4 +330,15 @@ namespace appbase {
          state _state = abstract_plugin::registered;
          std::string _name;
    };
+
+   template<typename Data, typename DispatchPolicy>
+   void channel<Data,DispatchPolicy>::publish(int priority, const Data& data) {
+      if (has_subscribers()) {
+         // this will copy data into the lambda
+         app().post( priority, [this, data]() {
+            _signal(data);
+         });
+      }
+   }
+
 }

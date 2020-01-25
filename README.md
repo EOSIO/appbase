@@ -10,7 +10,7 @@ plugins are configured, initialized, started, and shutdown in the proper order.
 - Dynamically Specify Plugins to Load
 - Automatically Load Dependent Plugins in Order
 - Plugins can specify commandline arguments and configuration file options
-- Program gracefully exits from SIGINT and SIGTERM
+- Program gracefully exits from SIGINT, SIGTERM, and SIGPIPE
 - Minimal Dependencies (Boost 1.60, c++14)
 
 ## Defining a Plugin
@@ -88,15 +88,23 @@ exited cleanly
 
 AppBase maintains a singleton `application` instance which can be accessed via `appbase::app()`.  This 
 application owns a `boost::asio::io_service` which starts running when `appbase::exec()` is called. If 
-a plugin needs to perform IO or other asynchronous operations then it should dispatch it via 
-`app().get_io_service().post( lambda )`.  
+a plugin needs to perform IO or other asynchronous operations then it should dispatch it via `application`
+`io_service` which is setup to use an execution priority queue.
+```
+app().post( appbase::priority::low, lambda )
+```
+OR
+```
+delay_timer->async_wait( app().get_priority_queue().wrap( priority::low, lambda ) );
+```
+Use of `get_io_service()` directly is not recommended as the priority queue will not be respected. 
 
-Because the app calls `io_service::run()` from within `application::exec()` all asynchronous operations
-posted to the io_service should be run in the same thread.  
+Because the app calls `io_service::run()` from within `application::exec()` and does not spawn any threads
+all asynchronous operations posted to the io_service should be run in the same thread.  
 
 ## Graceful Exit 
 
-To trigger a graceful exit call `appbase::app().quit()` or send SIGTERM or SIGINT to the process.
+To trigger a graceful exit call `appbase::app().quit()` or send SIGTERM, SIGINT, or SIGPIPE to the process.
 
 ## Dependencies 
 
