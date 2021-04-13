@@ -363,6 +363,10 @@ bool application::initialize_impl(int argc, char** argv, vector<abstract_plugin*
          if (plugin != nullptr && plugin->get_state() == abstract_plugin::registered)
             plugin->initialize(options);
    } catch (...) {
+      if( options.count("print-build-info") || options.count("print-genesis-json") 
+         || options.count("extract-build-info") || options.count("extract-genesis-json")) {
+         return false;
+      }
       std::cerr << "Failed to initialize\n";
       return false;
    }
